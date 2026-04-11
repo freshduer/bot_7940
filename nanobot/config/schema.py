@@ -98,6 +98,10 @@ class ProviderConfig(Base):
     api_key: str = ""
     api_base: str | None = None
     extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
+    # Query string merged into every request (e.g. Azure-style api-version=…).
+    default_query: dict[str, str] | None = None
+    # Azure / HKBU GenAI: use ``api-key`` header instead of ``Authorization: Bearer``.
+    auth_style: Literal["bearer", "api_key"] = "bearer"
 
 
 class ProvidersConfig(Base):

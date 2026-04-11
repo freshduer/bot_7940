@@ -10,7 +10,7 @@ import secrets
 import string
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import json_repair
 
@@ -141,6 +141,8 @@ class OpenAICompatProvider(LLMProvider):
         default_model: str = "gpt-4o",
         extra_headers: dict[str, str] | None = None,
         spec: ProviderSpec | None = None,
+        default_query: dict[str, str] | None = None,
+        auth_style: Literal["bearer", "api_key"] = "bearer",
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
@@ -158,12 +160,25 @@ class OpenAICompatProvider(LLMProvider):
         if extra_headers:
             default_headers.update(extra_headers)
 
-        self._client = AsyncOpenAI(
-            api_key=api_key or "no-key",
-            base_url=effective_base,
-            default_headers=default_headers,
-            max_retries=0,
-        )
+        if auth_style == "api_key":
+            if not api_key:
+                raise ValueError("auth_style=api_key requires a non-empty api_key")
+            # OpenAI SDK skips Bearer when api_key is empty; authenticate via api-key header.
+            default_headers = {**default_headers, "api-key": api_key}
+            client_api_key: str | None = ""
+        else:
+            client_api_key = api_key or "no-key"
+
+        client_kw: dict[str, Any] = {
+            "api_key": client_api_key,
+            "base_url": effective_base,
+            "default_headers": default_headers,
+            "max_retries": 0,
+        }
+        if default_query:
+            client_kw["default_query"] = default_query
+
+        self._client = AsyncOpenAI(**client_kw)
 
     def _setup_env(self, api_key: str, api_base: str | None) -> None:
         """Set environment variables based on provider spec."""

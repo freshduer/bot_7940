@@ -466,6 +466,8 @@ def _make_provider(config: Config):
             default_model=model,
             extra_headers=p.extra_headers if p else None,
             spec=spec,
+            default_query=p.default_query if p else None,
+            auth_style=p.auth_style if p else "bearer",
         )
 
     defaults = config.agents.defaults
