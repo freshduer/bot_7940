@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from nanobot.bus.events import OutboundMessage
+from nanobot.bus.queue import MessageBus
 from nanobot.cli.commands import _make_provider, app
 from nanobot.config.schema import Config
 from nanobot.cron.types import CronJob, CronPayload
@@ -426,7 +427,10 @@ def mock_agent_runtime(tmp_path):
          patch("nanobot.cli.commands.sync_workspace_templates") as mock_sync_templates, \
          patch("nanobot.cli.commands._make_provider", return_value=object()), \
          patch("nanobot.cli.commands._print_agent_response") as mock_print_response, \
-         patch("nanobot.bus.queue.MessageBus"), \
+         patch(
+             "nanobot.middleware.redis_bus.make_message_bus",
+             side_effect=lambda *args, **kwargs: MessageBus(),
+         ), \
          patch("nanobot.cron.service.CronService"), \
          patch("nanobot.agent.loop.AgentLoop") as mock_agent_loop_cls:
         agent_loop = MagicMock()
@@ -500,7 +504,10 @@ def test_agent_config_sets_active_path(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("nanobot.config.loader.load_config", lambda _path=None: config)
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: object())
-    monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr(
+        "nanobot.middleware.redis_bus.make_message_bus",
+        lambda *args, **kwargs: MessageBus(),
+    )
     monkeypatch.setattr("nanobot.cron.service.CronService", lambda _store: object())
 
     class _FakeAgentLoop:
@@ -535,7 +542,10 @@ def test_agent_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: Pa
     monkeypatch.setattr("nanobot.config.loader.load_config", lambda _path=None: config)
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: object())
-    monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr(
+        "nanobot.middleware.redis_bus.make_message_bus",
+        lambda *args, **kwargs: MessageBus(),
+    )
 
     class _FakeCron:
         def __init__(self, store_path: Path) -> None:
@@ -581,7 +591,10 @@ def test_agent_workspace_override_does_not_migrate_legacy_cron(
     monkeypatch.setattr("nanobot.config.loader.load_config", lambda _path=None: config)
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: object())
-    monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr(
+        "nanobot.middleware.redis_bus.make_message_bus",
+        lambda *args, **kwargs: MessageBus(),
+    )
     monkeypatch.setattr("nanobot.config.paths.get_cron_dir", lambda: legacy_dir)
 
     class _FakeCron:
@@ -634,7 +647,10 @@ def test_agent_custom_config_workspace_does_not_migrate_legacy_cron(
     monkeypatch.setattr("nanobot.config.loader.load_config", lambda _path=None: config)
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: object())
-    monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr(
+        "nanobot.middleware.redis_bus.make_message_bus",
+        lambda *args, **kwargs: MessageBus(),
+    )
     monkeypatch.setattr("nanobot.config.paths.get_cron_dir", lambda: legacy_dir)
 
     class _FakeCron:
@@ -749,7 +765,10 @@ def _patch_cli_command_runtime(
     )
 
     if message_bus is not None:
-        monkeypatch.setattr("nanobot.bus.queue.MessageBus", message_bus)
+        monkeypatch.setattr(
+            "nanobot.middleware.redis_bus.make_message_bus",
+            lambda *args, **kwargs: message_bus(),
+        )
     if session_manager is not None:
         monkeypatch.setattr("nanobot.session.manager.SessionManager", session_manager)
     if cron_service is not None:
@@ -886,7 +905,10 @@ def test_gateway_cron_evaluator_receives_scheduled_reminder_context(
     monkeypatch.setattr("nanobot.config.loader.load_config", lambda _path=None: config)
     monkeypatch.setattr("nanobot.cli.commands.sync_workspace_templates", lambda _path: None)
     monkeypatch.setattr("nanobot.cli.commands._make_provider", lambda _config: provider)
-    monkeypatch.setattr("nanobot.bus.queue.MessageBus", lambda: bus)
+    monkeypatch.setattr(
+        "nanobot.middleware.redis_bus.make_message_bus",
+        lambda *args, **kwargs: bus,
+    )
     monkeypatch.setattr("nanobot.session.manager.SessionManager", lambda _workspace: object())
 
     class _FakeCron:
