@@ -479,6 +479,13 @@ def _make_provider(config: Config):
     return provider
 
 
+async def _aclose_message_bus_if_needed(bus: Any) -> None:
+    """Close Redis client when using RedisLoggingMessageBus."""
+    fn = getattr(bus, "aclose", None)
+    if callable(fn):
+        await fn()
+
+
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
     """Load config and optionally override the active workspace."""
     from nanobot.config.loader import load_config, resolve_config_env_vars, set_config_path
@@ -558,7 +565,7 @@ def serve(
     from loguru import logger
     from nanobot.agent.loop import AgentLoop
     from nanobot.api.server import create_app
-    from nanobot.bus.queue import MessageBus
+    from nanobot.middleware.redis_bus import make_message_bus
     from nanobot.session.manager import SessionManager
 
     if verbose:
@@ -572,9 +579,9 @@ def serve(
     port = port if port is not None else api_cfg.port
     timeout = timeout if timeout is not None else api_cfg.timeout
     sync_workspace_templates(runtime_config.workspace_path)
-    bus = MessageBus()
-    provider = _make_provider(runtime_config)
     session_manager = SessionManager(runtime_config.workspace_path)
+    bus = make_message_bus(runtime_config, session_manager=session_manager)
+    provider = _make_provider(runtime_config)
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -616,6 +623,7 @@ def serve(
 
     async def on_cleanup(_app):
         await agent_loop.close_mcp()
+        await _aclose_message_bus_if_needed(bus)
 
     api_app.on_startup.append(on_startup)
     api_app.on_cleanup.append(on_cleanup)
@@ -637,8 +645,8 @@ def gateway(
 ):
     """Start the nanobot gateway."""
     from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
     from nanobot.channels.manager import ChannelManager
+    from nanobot.middleware.redis_bus import make_message_bus
     from nanobot.cron.service import CronService
     from nanobot.cron.types import CronJob
     from nanobot.heartbeat.service import HeartbeatService
@@ -654,9 +662,9 @@ def gateway(
 
     console.print(f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
-    bus = MessageBus()
-    provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
+    bus = make_message_bus(config, session_manager=session_manager)
+    provider = _make_provider(config)
 
     # Preserve existing single-workspace installs, but keep custom workspaces clean.
     if is_default_workspace(config.workspace_path):
@@ -857,6 +865,7 @@ def gateway(
             cron.stop()
             agent.stop()
             await channels.stop_all()
+            await _aclose_message_bus_if_needed(bus)
 
     asyncio.run(run())
 
@@ -879,13 +888,15 @@ def agent(
     from loguru import logger
 
     from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
     from nanobot.cron.service import CronService
+    from nanobot.middleware.redis_bus import make_message_bus
+    from nanobot.session.manager import SessionManager
 
     config = _load_runtime_config(config, workspace)
     sync_workspace_templates(config.workspace_path)
 
-    bus = MessageBus()
+    session_manager = SessionManager(config.workspace_path)
+    bus = make_message_bus(config, session_manager=session_manager)
     provider = _make_provider(config)
 
     # Preserve existing single-workspace installs, but keep custom workspaces clean.
@@ -920,6 +931,7 @@ def agent(
         timezone=config.agents.defaults.timezone,
         unified_session=config.agents.defaults.unified_session,
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
+        session_manager=session_manager,
     )
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):
@@ -957,6 +969,7 @@ def agent(
                     metadata=response.metadata if response else None,
                 )
             await agent_loop.close_mcp()
+            await _aclose_message_bus_if_needed(bus)
 
         asyncio.run(run_once())
     else:
@@ -1095,6 +1108,7 @@ def agent(
                 outbound_task.cancel()
                 await asyncio.gather(bus_task, outbound_task, return_exceptions=True)
                 await agent_loop.close_mcp()
+                await _aclose_message_bus_if_needed(bus)
 
         asyncio.run(run_interactive())
 

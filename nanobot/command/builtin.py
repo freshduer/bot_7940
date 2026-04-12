@@ -93,6 +93,8 @@ async def cmd_new(ctx: CommandContext) -> OutboundMessage:
     """Start a fresh session."""
     loop = ctx.loop
     session = ctx.session or loop.sessions.get_or_create(ctx.key)
+    # Bump so Redis conversation logs use a new key after /new (see middleware/redis_bus.py).
+    session.metadata["conversation_log_epoch"] = session.metadata.get("conversation_log_epoch", 0) + 1
     snapshot = session.messages[session.last_consolidated:]
     session.clear()
     loop.sessions.save(session)
