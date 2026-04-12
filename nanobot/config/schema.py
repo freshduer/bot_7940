@@ -211,6 +211,25 @@ class ToolsConfig(Base):
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
 
 
+class RedisConversationLogConfig(Base):
+    """Redis Cloud (or any Redis) append-only conversation logging."""
+
+    enabled: bool = False
+    host: str = ""
+    port: int = 6379
+    username: str = "default"
+    password: str = ""  # Prefer ${REDIS_PASSWORD} in config or env REDIS_PASSWORD
+    ssl: bool = False
+    key_prefix: str = "nanobot:conv"
+    max_text_chars: int = Field(default=16_384, ge=256, le=1_000_000)
+
+
+class ConversationLogConfig(Base):
+    """Optional logging of user/assistant messages to a database."""
+
+    redis: RedisConversationLogConfig = Field(default_factory=RedisConversationLogConfig)
+
+
 class Config(BaseSettings):
     """Root configuration for nanobot."""
 
@@ -220,6 +239,10 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    conversation_log: ConversationLogConfig = Field(
+        default_factory=ConversationLogConfig,
+        validation_alias=AliasChoices("conversationLog", "conversation_log"),
+    )
 
     @property
     def workspace_path(self) -> Path:
